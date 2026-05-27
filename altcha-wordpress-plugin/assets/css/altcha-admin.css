@@ -1,0 +1,87 @@
+/**
+ * Altcha Protection Styles
+ */
+
+.altcha-protection-wrapper {
+    margin: 15px 0;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+
+.altcha-challenge-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    font-size: 14px;
+    color: #666;
+}
+
+.altcha-loading {
+    text-align: center;
+    color: #0073aa;
+}
+
+.altcha-loading::before {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    border: 2px solid #0073aa;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+}
+
+.altcha-solving {
+    color: #0073aa;
+    font-weight: 500;
+}
+
+.altcha-solving::before {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    border: 2px solid #0073aa;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+}
+
+.altcha-success {
+    color: #008000;
+    font-weight: 600;
+    margin: 0;
+}
+
+.altcha-error {
+    color: #dc3545;
+    font-weight: 500;
+    margin: 0;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .altcha-protection-wrapper {
+        margin: 10px 0;
+        padding: 8px;
+    }
+
+    .altcha-challenge-container {
+        min-height: 35px;
+        font-size: 13px;
+    }
+}

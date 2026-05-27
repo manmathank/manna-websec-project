@@ -1,0 +1,54 @@
+# Build artifacts
+altcha-server/altcha-server
+*.o
+*.a
+*.so
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Docker
+*.log
+.dockerignore
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# PHP
+vendor/
+*.cache
+wp-content/
+wp-config.php
+
+# Node (if needed later)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# WordPress
+wp-*.php
+wp-config.php
+xmlrpc.php
+
+# Generated files
+*.tmp
+*.bak
+
+# OS specific
+.DS_Store
+Thumbs.db
