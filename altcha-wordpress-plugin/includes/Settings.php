@@ -10,12 +10,180 @@ class Settings {
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_menu', [$this, 'add_settings_page']);
         add_action('wp_ajax_altcha_fetch_public_key', [$this, 'ajax_fetch_public_key']);
+        add_action('wp_ajax_nopriv_altcha_fetch_public_key', [$this, 'ajax_fetch_public_key']);
     }
 
     public function register_settings() {
         register_setting($this->option_group, $this->option_name, [
             'sanitize_callback' => [$this, 'sanitize_settings'],
+            'type' => 'array',
         ]);
+
+        add_settings_section(
+            'altcha_server_section',
+            'Server Configuration',
+            null,
+            $this->option_group
+        );
+
+        add_settings_field(
+            'server_url_client',
+            'Altcha Server URL (Client-Side)',
+            [$this, 'render_field_server_url_client'],
+            $this->option_group,
+            'altcha_server_section'
+        );
+
+        add_settings_field(
+            'server_url_server',
+            'Altcha Server URL (Server-Side)',
+            [$this, 'render_field_server_url_server'],
+            $this->option_group,
+            'altcha_server_section'
+        );
+
+        add_settings_section(
+            'altcha_protection_section',
+            'Protection Settings',
+            null,
+            $this->option_group
+        );
+
+        add_settings_field(
+            'enable_login',
+            'Protect Login',
+            [$this, 'render_field_enable_login'],
+            $this->option_group,
+            'altcha_protection_section'
+        );
+
+        add_settings_field(
+            'enable_registration',
+            'Protect Registration',
+            [$this, 'render_field_enable_registration'],
+            $this->option_group,
+            'altcha_protection_section'
+        );
+
+        add_settings_field(
+            'enable_wpforms',
+            'Protect WPForms',
+            [$this, 'render_field_enable_wpforms'],
+            $this->option_group,
+            'altcha_protection_section'
+        );
+
+        add_settings_field(
+            'enable_woocommerce',
+            'Protect WooCommerce',
+            [$this, 'render_field_enable_woocommerce'],
+            $this->option_group,
+            'altcha_protection_section'
+        );
+
+        add_settings_field(
+            'difficulty',
+            'PoW Difficulty',
+            [$this, 'render_field_difficulty'],
+            $this->option_group,
+            'altcha_protection_section'
+        );
+
+        add_settings_section(
+            'altcha_token_section',
+            'Token Verification',
+            null,
+            $this->option_group
+        );
+
+        add_settings_field(
+            'public_key_status',
+            'Public Key Status',
+            [$this, 'render_field_public_key_status'],
+            $this->option_group,
+            'altcha_token_section'
+        );
+    }
+
+    public function render_field_server_url_client() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="url" name="<?php echo esc_attr($this->option_name); ?>[server_url_client]" value="<?php echo esc_attr($settings['server_url_client']); ?>" required style="width: 100%; max-width: 400px;" placeholder="http://localhost:8080" />
+        <p class="description">The URL used by browsers to fetch challenges and verify solutions</p>
+        <?php
+    }
+
+    public function render_field_server_url_server() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="url" name="<?php echo esc_attr($this->option_name); ?>[server_url_server]" value="<?php echo esc_attr($settings['server_url_server']); ?>" required style="width: 100%; max-width: 400px;" placeholder="http://localhost:8080" />
+        <p class="description">The URL used by WordPress server for public key retrieval (can be internal network URL)</p>
+        <?php
+    }
+
+    public function render_field_enable_login() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="checkbox" name="<?php echo esc_attr($this->option_name); ?>[enable_login]" value="1" <?php checked($settings['enable_login'], 1); ?> />
+        <label>Enable PoW challenge on login form</label>
+        <?php
+    }
+
+    public function render_field_enable_registration() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="checkbox" name="<?php echo esc_attr($this->option_name); ?>[enable_registration]" value="1" <?php checked($settings['enable_registration'], 1); ?> />
+        <label>Enable PoW challenge on user registration</label>
+        <?php
+    }
+
+    public function render_field_enable_wpforms() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="checkbox" name="<?php echo esc_attr($this->option_name); ?>[enable_wpforms]" value="1" <?php checked($settings['enable_wpforms'], 1); ?> />
+        <label>Enable PoW challenge on WPForms</label>
+        <?php
+    }
+
+    public function render_field_enable_woocommerce() {
+        $settings = $this->get_settings();
+        ?>
+        <input type="checkbox" name="<?php echo esc_attr($this->option_name); ?>[enable_woocommerce]" value="1" <?php checked($settings['enable_woocommerce'], 1); ?> />
+        <label>Enable PoW challenge on WooCommerce checkout</label>
+        <?php
+    }
+
+    public function render_field_difficulty() {
+        $settings = $this->get_settings();
+        ?>
+        <select name="<?php echo esc_attr($this->option_name); ?>[difficulty]">
+            <option value="1" <?php selected($settings['difficulty'], 1); ?>>Very Easy (1) - < 1s</option>
+            <option value="2" <?php selected($settings['difficulty'], 2); ?>>Easy (2) - ~1s</option>
+            <option value="3" <?php selected($settings['difficulty'], 3); ?>>Medium (3) - ~3s (Recommended)</option>
+            <option value="4" <?php selected($settings['difficulty'], 4); ?>>Hard (4) - ~5s</option>
+            <option value="5" <?php selected($settings['difficulty'], 5); ?>>Very Hard (5) - ~10s</option>
+        </select>
+        <p class="description">Higher difficulty = stronger protection but longer solving time</p>
+        <?php
+    }
+
+    public function render_field_public_key_status() {
+        // Force fresh load from database without caching
+        $option = get_option($this->option_name, []);
+        $public_key = isset($option['public_key']) ? $option['public_key'] : '';
+        
+        error_log('[Altcha] render_field_public_key_status - public_key length: ' . strlen($public_key));
+        ?>
+        <div id="altcha_key_status_container">
+            <?php if (!empty($public_key)): ?>
+                <p style="color: green;">✓ Public key is configured</p>
+            <?php else: ?>
+                <p style="color: orange;">⚠ No public key configured</p>
+            <?php endif; ?>
+        </div>
+        <button type="button" id="altcha_fetch_key_btn" class="button button-secondary" style="margin-top: 10px;">Fetch Public Key</button>
+        <span id="altcha_key_status"></span>
+        <?php
     }
 
     public function add_settings_page() {
@@ -33,182 +201,20 @@ class Settings {
             wp_die('Unauthorized');
         }
 
-        $settings = $this->get_settings();
         ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
             
             <form action="options.php" method="post">
                 <?php settings_fields($this->option_group); ?>
-                
-                <table class="form-table">
-                    <tr>
-                        <th scope="row" colspan="2">
-                            <h2 style="margin: 0;">Server Configuration</h2>
-                        </th>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_server_url_client">Altcha Server URL (Client-Side):</label>
-                        </th>
-                        <td>
-                            <input 
-                                type="url" 
-                                id="altcha_server_url_client" 
-                                name="<?php echo esc_attr($this->option_name); ?>[server_url_client]" 
-                                value="<?php echo esc_attr($settings['server_url_client']); ?>" 
-                                required 
-                                style="width: 100%; max-width: 400px;"
-                                placeholder="http://localhost:8080"
-                            />
-                            <p class="description">The URL used by browsers to fetch challenges and verify solutions (e.g., http://localhost:8080 or https://altcha.yourdomain.com)</p>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_server_url_server">Altcha Server URL (Server-Side):</label>
-                        </th>
-                        <td>
-                            <input 
-                                type="url" 
-                                id="altcha_server_url_server" 
-                                name="<?php echo esc_attr($this->option_name); ?>[server_url_server]" 
-                                value="<?php echo esc_attr($settings['server_url_server']); ?>" 
-                                required 
-                                style="width: 100%; max-width: 400px;"
-                                placeholder="http://localhost:8080"
-                            />
-                            <p class="description">The URL used by WordPress server for public key retrieval and token verification (e.g., http://localhost:8080 or http://altcha-internal:8080). Can be the same as client URL.</p>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row" colspan="2">
-                            <h2 style="margin: 0;">Protection Settings</h2>
-                        </th>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_enable_login">Protect Login:</label>
-                        </th>
-                        <td>
-                            <input 
-                                type="checkbox" 
-                                id="altcha_enable_login" 
-                                name="<?php echo esc_attr($this->option_name); ?>[enable_login]" 
-                                value="1" 
-                                <?php checked($settings['enable_login'], 1); ?>
-                            />
-                            <label for="altcha_enable_login">Enable PoW challenge on login form</label>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_enable_registration">Protect Registration:</label>
-                        </th>
-                        <td>
-                            <input 
-                                type="checkbox" 
-                                id="altcha_enable_registration" 
-                                name="<?php echo esc_attr($this->option_name); ?>[enable_registration]" 
-                                value="1" 
-                                <?php checked($settings['enable_registration'], 1); ?>
-                            />
-                            <label for="altcha_enable_registration">Enable PoW challenge on user registration</label>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_enable_wpforms">Protect WPForms:</label>
-                        </th>
-                        <td>
-                            <input 
-                                type="checkbox" 
-                                id="altcha_enable_wpforms" 
-                                name="<?php echo esc_attr($this->option_name); ?>[enable_wpforms]" 
-                                value="1" 
-                                <?php checked($settings['enable_wpforms'], 1); ?>
-                            />
-                            <label for="altcha_enable_wpforms">Enable PoW challenge on WPForms</label>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_enable_woocommerce">Protect WooCommerce Checkout:</label>
-                        </th>
-                        <td>
-                            <input 
-                                type="checkbox" 
-                                id="altcha_enable_woocommerce" 
-                                name="<?php echo esc_attr($this->option_name); ?>[enable_woocommerce]" 
-                                value="1" 
-                                <?php checked($settings['enable_woocommerce'], 1); ?>
-                            />
-                            <label for="altcha_enable_woocommerce">Enable PoW challenge on WooCommerce checkout</label>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">
-                            <label for="altcha_difficulty">PoW Difficulty:</label>
-                        </th>
-                        <td>
-                            <select id="altcha_difficulty" name="<?php echo esc_attr($this->option_name); ?>[difficulty]">
-                                <option value="1" <?php selected($settings['difficulty'], 1); ?>>Easy (1) - < 1ms</option>
-                                <option value="2" <?php selected($settings['difficulty'], 2); ?>>Medium (2) - ~10ms (Recommended)</option>
-                                <option value="3" <?php selected($settings['difficulty'], 3); ?>>Hard (3) - ~100ms</option>
-                                <option value="4" <?php selected($settings['difficulty'], 4); ?>>Very Hard (4) - ~1s</option>
-                            </select>
-                            <p class="description">Higher difficulty = stronger protection but longer solving time</p>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row" colspan="2">
-                            <h2 style="margin: 0;">Token Verification</h2>
-                        </th>
-                    </tr>
-
-                    <tr>
-                        <th scope="row">Public Key Status:</th>
-                        <td>
-                            <div id="altcha_key_status_container">
-                                <?php if (!empty($settings['public_key'])): ?>
-                                    <p style="color: green;">✓ Public key is configured</p>
-                                <?php else: ?>
-                                    <p style="color: orange;">⚠ No public key configured</p>
-                                <?php endif; ?>
-                            </div>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <th scope="row"></th>
-                        <td>
-                            <button 
-                                type="button" 
-                                id="altcha_fetch_key_btn" 
-                                class="button button-secondary"
-                                style="margin-top: 10px;"
-                            >Fetch Public Key</button>
-                            <span id="altcha_key_status"></span>
-                        </td>
-                    </tr>
-                </table>
-
+                <?php do_settings_sections($this->option_group); ?>
                 <?php submit_button(); ?>
             </form>
         </div>
 
         <script>
             document.getElementById('altcha_fetch_key_btn').addEventListener('click', function() {
-                const serverUrl = document.getElementById('altcha_server_url_server').value;
+                const serverUrl = document.querySelector('input[name="<?php echo esc_attr($this->option_name); ?>[server_url_server]"]').value;
                 const statusEl = document.getElementById('altcha_key_status');
                 
                 if (!serverUrl) {
@@ -257,13 +263,7 @@ class Settings {
     }
 
     public function ajax_fetch_public_key() {
-        // Add logging before nonce check
-        error_log('[Altcha] AJAX fetch_public_key called');
-
-        if (!check_ajax_referer('altcha_fetch_key', 'nonce', false)) {
-            error_log('[Altcha] Nonce verification failed');
-            wp_send_json_error(['message' => 'Nonce verification failed']);
-        }
+        check_ajax_referer('altcha_fetch_key', 'nonce', false);
 
         if (!current_user_can('manage_options')) {
             error_log('[Altcha] User does not have manage_options capability');
@@ -284,7 +284,7 @@ class Settings {
 
         $response = wp_remote_get($fetch_url, [
             'timeout' => 5,
-            'sslverify' => true,
+            'sslverify' => false,
         ]);
 
         if (is_wp_error($response)) {
@@ -297,7 +297,7 @@ class Settings {
         error_log('[Altcha] Response HTTP code: ' . $http_code);
 
         $body = wp_remote_retrieve_body($response);
-        error_log('[Altcha] Response body: ' . substr($body, 0, 200));
+        error_log('[Altcha] Response body: ' . substr($body, 0, 500));
 
         $data = json_decode($body, true);
 
@@ -315,13 +315,25 @@ class Settings {
         // Store the public key
         $settings = $this->get_settings();
         $settings['public_key'] = $data['publicKey'];
-        update_option($this->option_name, $settings);
+        
+        error_log('[Altcha] Saving settings with public_key: ' . substr($data['publicKey'], 0, 50) . '...');
+        
+        $result = update_option($this->option_name, $settings);
+        
+        error_log('[Altcha] update_option result: ' . ($result ? 'true' : 'false'));
+        
+        // Verify it was saved
+        $verify = get_option($this->option_name);
+        error_log('[Altcha] Verification - get_option result: ' . print_r($verify, true));
 
-        error_log('[Altcha] Public key successfully stored');
-        wp_send_json_success(['public_key' => $data['publicKey']]);
+        wp_send_json_success(['public_key' => substr($data['publicKey'], 0, 50)]);
     }
 
     public function sanitize_settings($settings) {
+        if (!is_array($settings)) {
+            return $this->get_settings();
+        }
+
         $sanitized = $this->get_settings();
         
         if (isset($settings['server_url_client'])) {
@@ -330,21 +342,18 @@ class Settings {
         if (isset($settings['server_url_server'])) {
             $sanitized['server_url_server'] = sanitize_url($settings['server_url_server']);
         }
-        if (isset($settings['enable_login'])) {
-            $sanitized['enable_login'] = (int)$settings['enable_login'];
-        }
-        if (isset($settings['enable_registration'])) {
-            $sanitized['enable_registration'] = (int)$settings['enable_registration'];
-        }
-        if (isset($settings['enable_wpforms'])) {
-            $sanitized['enable_wpforms'] = (int)$settings['enable_wpforms'];
-        }
-        if (isset($settings['enable_woocommerce'])) {
-            $sanitized['enable_woocommerce'] = (int)$settings['enable_woocommerce'];
-        }
+        
+        // Handle checkboxes - only true if explicitly sent
+        $sanitized['enable_login'] = isset($settings['enable_login']) ? 1 : 0;
+        $sanitized['enable_registration'] = isset($settings['enable_registration']) ? 1 : 0;
+        $sanitized['enable_wpforms'] = isset($settings['enable_wpforms']) ? 1 : 0;
+        $sanitized['enable_woocommerce'] = isset($settings['enable_woocommerce']) ? 1 : 0;
+        
         if (isset($settings['difficulty'])) {
             $sanitized['difficulty'] = (int)$settings['difficulty'];
         }
+        
+        error_log('[Altcha] Settings sanitized: ' . print_r($sanitized, true));
         
         return $sanitized;
     }
@@ -361,7 +370,13 @@ class Settings {
             'public_key' => '',
         ];
         
-        return array_merge($defaults, (array)get_option($this->option_name, []));
+        $option = get_option($this->option_name, []);
+        error_log('[Altcha] get_option result: ' . print_r($option, true));
+        
+        $result = array_merge($defaults, (array)$option);
+        error_log('[Altcha] merged settings: ' . print_r($result, true));
+        
+        return $result;
     }
 }
 

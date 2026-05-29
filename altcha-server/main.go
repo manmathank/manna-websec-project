@@ -33,15 +33,20 @@ type ChallengeResponse struct {
 	Challenge   string `json:"challenge"`
 	Difficulty  int    `json:"difficulty"`
 	Salt        string `json:"salt"`
+	Signature   string `json:"signature"`
 	MaxAttempts int    `json:"maxAttempts"`
 	ExpiresIn   int    `json:"expiresIn"`
+	Timestamp   int64  `json:"timestamp"`
 }
 
 type VerifyRequest struct {
-	Algorithm string `json:"algorithm"`
-	Challenge string `json:"challenge"`
-	Number    int    `json:"number"`
-	Salt      string `json:"salt"`
+	Algorithm  string `json:"algorithm"`
+	Challenge  string `json:"challenge"`
+	Number     int    `json:"number"`
+	Salt       string `json:"salt"`
+	Difficulty int    `json:"difficulty"`
+	Signature  string `json:"signature"`
+	Timestamp  int64  `json:"timestamp"`
 }
 
 type VerifyResponse struct {
@@ -148,19 +153,32 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Validate difficulty is between 1 and 5
+	if difficulty < 1 {
+		difficulty = 1
+	} else if difficulty > 5 {
+		difficulty = 5
+	}
+
 	// Generate random challenge and salt
 	challenge := generateRandomHex(32)
 	salt := generateRandomHex(16)
+	timestamp := time.Now().Unix()
 
-	log.Printf("[CHALLENGE] Generated - difficulty: %d, challenge: %s, salt: %s\n", difficulty, challenge[:8]+"...", salt[:8]+"...")
+	// Generate signature: HMAC-SHA256(challenge|salt|timestamp, secret)
+	signature := s.generateSignature(challenge, salt, timestamp)
+
+	log.Printf("[CHALLENGE] Generated - difficulty: %d, challenge: %s, salt: %s, timestamp: %d\n", difficulty, challenge[:8]+"...", salt[:8]+"...", timestamp)
 
 	response := ChallengeResponse{
 		Algorithm:   "SHA-256",
 		Challenge:   challenge,
 		Difficulty:  difficulty,
 		Salt:        salt,
+		Signature:   signature,
 		MaxAttempts: 1000000,
 		ExpiresIn:   600,
+		Timestamp:   timestamp,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -191,11 +209,44 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[VERIFY] Request received - challenge: %s, salt: %s, number: %d\n", req.Challenge[:8]+"...", req.Salt[:8]+"...", req.Number)
+	log.Printf("[VERIFY] Request received - challenge: %s, salt: %s, number: %d, difficulty: %d, timestamp: %d\n", req.Challenge[:8]+"...", req.Salt[:8]+"...", req.Number, req.Difficulty, req.Timestamp)
 
-	// Verify PoW
-	if !s.verifyPoW(req.Challenge, req.Salt, req.Number) {
-		log.Printf("[VERIFY] PoW verification failed\n")
+	// Check timestamp is within validity window (ExpiresIn = 600 seconds)
+	expiresIn := int64(600)
+	now := time.Now().Unix()
+	if now-req.Timestamp > expiresIn {
+		log.Printf("[VERIFY] Challenge expired - requested at %d, expired at %d, now: %d\n", req.Timestamp, req.Timestamp+expiresIn, now)
+		json.NewEncoder(w).Encode(VerifyResponse{
+			IsValid:      false,
+			ErrorMessage: "Challenge expired",
+		})
+		return
+	}
+
+	if req.Timestamp > now {
+		log.Printf("[VERIFY] Challenge timestamp in future - possible clock skew or attack\n")
+		json.NewEncoder(w).Encode(VerifyResponse{
+			IsValid:      false,
+			ErrorMessage: "Invalid challenge timestamp",
+		})
+		return
+	}
+
+	// Verify signature - ensures challenge was issued by this server
+	if !s.verifySignature(req.Challenge, req.Salt, req.Timestamp, req.Signature) {
+		log.Printf("[VERIFY] Signature verification failed - request may be forged\n")
+		json.NewEncoder(w).Encode(VerifyResponse{
+			IsValid:      false,
+			ErrorMessage: "Invalid challenge signature",
+		})
+		return
+	}
+
+	log.Printf("[VERIFY] Signature verified successfully\n")
+
+	// Verify PoW with client-specified difficulty
+	if !s.verifyPoW(req.Challenge, req.Salt, req.Number, req.Difficulty) {
+		log.Printf("[VERIFY] PoW verification failed for number: %d with difficulty: %d\n", req.Number, req.Difficulty)
 		json.NewEncoder(w).Encode(VerifyResponse{
 			IsValid:      false,
 			ErrorMessage: "PoW verification failed",
@@ -203,7 +254,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[VERIFY] PoW verification successful\n")
+	log.Printf("[VERIFY] PoW verification successful with difficulty: %d\n", req.Difficulty)
 
 	// Generate token
 	token, err := s.generateToken(req.Challenge, req.Salt)
@@ -251,27 +302,54 @@ func (s *Server) handlePublicKey(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (s *Server) verifyPoW(challenge, salt string, number int) bool {
+func (s *Server) verifyPoW(challenge, salt string, number int, difficulty int) bool {
+	// Validate difficulty
+	if difficulty < 1 || difficulty > 5 {
+		difficulty = 2
+	}
+
 	// Construct the data to hash
 	data := []byte(challenge + strconv.Itoa(number) + salt)
 	hash := sha256.Sum256(data)
 	hashHex := hex.EncodeToString(hash[:])
 
-	// Get difficulty from challenge (this is simplified; in production,
-	// you'd store difficulty per challenge in a cache/DB)
-	// For now, we'll accept any valid PoW and let the client set difficulty
-	// In a real scenario, the difficulty should be retrieved from the challenge
-	difficulty := 2
-
-	// Check if hash has required leading zeros
-	zeroBytes := difficulty / 4
-	for i := 0; i < zeroBytes; i++ {
+	// Check if hash has required leading zeros based on difficulty
+	// difficulty 1 = 0 leading zeros, 2 = 1 leading zero, 3 = 2 leading zeros, etc.
+	requiredZeros := difficulty - 1
+	for i := 0; i < requiredZeros; i++ {
 		if hashHex[i*2] != '0' || hashHex[i*2+1] != '0' {
+			log.Printf("[VERIFY_POW] Failed at position %d. Hash: %s\n", i, hashHex[:8]+"...")
 			return false
 		}
 	}
 
+	log.Printf("[VERIFY_POW] Success - required zeros: %d, hash: %s\n", requiredZeros, hashHex[:16]+"...")
 	return true
+}
+
+func (s *Server) generateSignature(challenge, salt string, timestamp int64) string {
+	// Create HMAC-SHA256 signature of challenge|salt|timestamp with secret
+	h := hmac.New(sha256.New, []byte(s.secret))
+	h.Write([]byte(challenge + salt + strconv.FormatInt(timestamp, 10)))
+	signature := hex.EncodeToString(h.Sum(nil))
+	log.Printf("[SIGNATURE] Generated for challenge: %s, salt: %s, timestamp: %d\n", challenge[:8]+"...", salt[:8]+"...", timestamp)
+	return signature
+}
+
+func (s *Server) verifySignature(challenge, salt string, timestamp int64, signature string) bool {
+	// Recreate the signature and compare
+	expectedSig := s.generateSignature(challenge, salt, timestamp)
+	
+	// Use constant-time comparison to prevent timing attacks
+	isValid := hmac.Equal([]byte(signature), []byte(expectedSig))
+	
+	if isValid {
+		log.Printf("[SIGNATURE_VERIFY] Valid signature\n")
+	} else {
+		log.Printf("[SIGNATURE_VERIFY] Invalid signature. Expected: %s, Got: %s\n", expectedSig[:16]+"...", signature[:16]+"...")
+	}
+	
+	return isValid
 }
 
 func (s *Server) generateToken(challenge, salt string) (string, error) {

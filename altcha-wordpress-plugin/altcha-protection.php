@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altcha Protection
  * Description: PoW-based bot protection for login, registration, forms, and WooCommerce checkout
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Your Name
  * License: MIT
  * Text Domain: altcha-protection
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('ALTCHA_PROTECTION_VERSION', '1.0.0');
+define('ALTCHA_PROTECTION_VERSION', '1.0.1');
 define('ALTCHA_PROTECTION_DIR', plugin_dir_path(__FILE__));
 define('ALTCHA_PROTECTION_URL', plugin_dir_url(__FILE__));
 
@@ -55,7 +55,17 @@ add_action('admin_init', function() {
 
 // Activation hook
 register_activation_hook(__FILE__, function () {
-    add_option('altcha_protection_version', ALTCHA_PROTECTION_VERSION);
+    update_option('altcha_protection_version', ALTCHA_PROTECTION_VERSION);
+});
+
+// Update hook to handle version upgrades
+add_action('init', function () {
+    $db_version = get_option('altcha_protection_version');
+    if ($db_version !== ALTCHA_PROTECTION_VERSION) {
+        update_option('altcha_protection_version', ALTCHA_PROTECTION_VERSION);
+        // Invalidate cache on version change
+        wp_cache_flush();
+    }
 });
 
 // Make challenge verifier available globally
