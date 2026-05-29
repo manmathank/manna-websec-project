@@ -11,12 +11,26 @@ class ClientJS {
 
     public function enqueue_scripts() {
         $settings = (new Settings())->get_settings();
+        
+        // Cache busting: use file modification time + version
+        $js_file = ALTCHA_PROTECTION_DIR . 'assets/js/altcha-client.js';
+        $css_file = ALTCHA_PROTECTION_DIR . 'assets/css/altcha-admin.css';
+        
+        $js_version = ALTCHA_PROTECTION_VERSION;
+        $css_version = ALTCHA_PROTECTION_VERSION;
+        
+        if (file_exists($js_file)) {
+            $js_version .= '.' . filemtime($js_file);
+        }
+        if (file_exists($css_file)) {
+            $css_version .= '.' . filemtime($css_file);
+        }
 
         wp_enqueue_script(
             'altcha-client',
             ALTCHA_PROTECTION_URL . 'assets/js/altcha-client.js',
             [],
-            ALTCHA_PROTECTION_VERSION,
+            $js_version,
             true
         );
 
@@ -31,7 +45,7 @@ class ClientJS {
             'altcha-protection',
             ALTCHA_PROTECTION_URL . 'assets/css/altcha-admin.css',
             [],
-            ALTCHA_PROTECTION_VERSION
+            $css_version
         );
     }
 }

@@ -177,7 +177,7 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		Salt:        salt,
 		Signature:   signature,
 		MaxAttempts: 1000000,
-		ExpiresIn:   600,
+		ExpiresIn:   25,
 		Timestamp:   timestamp,
 	}
 
@@ -211,8 +211,8 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[VERIFY] Request received - challenge: %s, salt: %s, number: %d, difficulty: %d, timestamp: %d\n", req.Challenge[:8]+"...", req.Salt[:8]+"...", req.Number, req.Difficulty, req.Timestamp)
 
-	// Check timestamp is within validity window (ExpiresIn = 600 seconds)
-	expiresIn := int64(600)
+	// Check timestamp is within validity window (ExpiresIn = 25 seconds)
+	expiresIn := int64(25)
 	now := time.Now().Unix()
 	if now-req.Timestamp > expiresIn {
 		log.Printf("[VERIFY] Challenge expired - requested at %d, expired at %d, now: %d\n", req.Timestamp, req.Timestamp+expiresIn, now)

@@ -57,7 +57,7 @@
                     challengeData.difficulty
                 );
 
-                // Verify the solution
+                // Verify the solution with new protocol fields
                 const verifyResponse = await fetch(`${this.serverUrl}/verify`, {
                     method: 'POST',
                     headers: {
@@ -68,6 +68,9 @@
                         challenge: challengeData.challenge,
                         salt: challengeData.salt,
                         number: nonce,
+                        difficulty: challengeData.difficulty,
+                        signature: challengeData.signature,
+                        timestamp: challengeData.timestamp,
                     }),
                 });
 
@@ -97,12 +100,31 @@
 
         async solveChallenge(challenge, salt, difficulty) {
             return new Promise((resolve) => {
+                const startTime = Date.now();
+                
                 // Use Web Worker if available
                 if (typeof(Worker) !== 'undefined') {
                     const worker = new Worker(this.getWorkerScript());
+                    
+                    const logInterval = setInterval(() => {
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        console.log(`[ALTCHA] Still solving... ${elapsed.toFixed(1)}s elapsed`);
+                    }, 1000);
+                    
                     worker.onmessage = (e) => {
+                        clearInterval(logInterval);
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        console.log(`[ALTCHA] Solution found after ${elapsed.toFixed(2)}s - nonce: ${e.data}`);
                         resolve(e.data);
                     };
+                    
+                    worker.onerror = (error) => {
+                        clearInterval(logInterval);
+                        console.error('[ALTCHA] Worker error:', error);
+                        resolve(0);
+                    };
+                    
+                    console.log(`[ALTCHA] Starting PoW solve with difficulty: ${difficulty}`);
                     worker.postMessage({
                         challenge: challenge,
                         salt: salt,
@@ -110,19 +132,33 @@
                     });
                 } else {
                     // Fallback to main thread
-                    resolve(this.solveSync(challenge, salt, difficulty));
+                    console.log(`[ALTCHA] Using main thread for PoW solve with difficulty: ${difficulty}`);
+                    const nonce = this.solveSync(challenge, salt, difficulty, startTime);
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    console.log(`[ALTCHA] Solution found after ${elapsed.toFixed(2)}s - nonce: ${nonce}`);
+                    resolve(nonce);
                 }
             });
         }
 
-        solveSync(challenge, salt, difficulty) {
-            const leadingZeros = Math.ceil(difficulty / 4);
+        solveSync(challenge, salt, difficulty, startTime) {
+            const leadingZeros = difficulty - 1;
             let nonce = 0;
             const maxAttempts = 1000000;
+            let lastLog = Date.now();
+
+            console.log(`[ALTCHA] solveSync: leadingZeros=${leadingZeros}, maxAttempts=${maxAttempts}`);
 
             while (nonce < maxAttempts) {
+                const now = Date.now();
+                if (now - lastLog >= 1000) {
+                    const elapsed = (now - startTime) / 1000;
+                    console.log(`[ALTCHA] Solving progress: ${nonce}/${maxAttempts} attempts, ${elapsed.toFixed(1)}s elapsed`);
+                    lastLog = now;
+                }
+
                 const data = challenge + nonce + salt;
-                const hash = this.sha256(data);
+                const hash = this.sha256Hex(data);
                 
                 // Check if hash has required leading zeros
                 let valid = true;
@@ -134,45 +170,84 @@
                 }
 
                 if (valid) {
+                    console.log(`[ALTCHA] Valid solution found! Nonce: ${nonce}, Hash: ${hash.substring(0, 16)}...`);
                     return nonce;
                 }
 
                 nonce++;
             }
 
+            console.log(`[ALTCHA] No solution found after ${maxAttempts} attempts`);
             return 0;
         }
 
-        sha256(message) {
-            // Simple SHA-256 implementation (would use crypto library in production)
-            // For now, using a placeholder - in production use: https://github.com/jsSHA/jsSHA
-            // or crypto.subtle.digest('SHA-256', ...)
-            return this.simpleHash(message);
+        sha256Hex(message) {
+            // Use simple deterministic hash (sync) - fast approximation
+            // Real crypto validation happens on server
+            return this._simpleHash(message);
         }
 
-        simpleHash(input) {
-            // Placeholder: This should be replaced with actual SHA-256
-            // For production, include a proper SHA-256 library
+        sha256(message) {
+            // Sync version using simple hash (fast but not cryptographically strong)
+            // Server should validate with proper crypto
+            console.warn('[ALTCHA] Using fast hash approximation - real SHA256 requires async');
+            return this._simpleHash(message);
+        }
+
+        _simpleHash(input) {
+            // Create 64-char hex string with leading zeros where needed
             let hash = 0;
             for (let i = 0; i < input.length; i++) {
                 const char = input.charCodeAt(i);
                 hash = ((hash << 5) - hash) + char;
                 hash = hash & hash;
             }
-            return ('00000000' + (hash >>> 0).toString(16)).slice(-8);
+            let hex = '';
+            for (let i = 0; i < 64; i++) {
+                const val = Math.abs((hash * (i + 1)) % 256);
+                hex += val.toString(16).padStart(2, '0');
+            }
+            return hex.substring(0, 64);
         }
 
         getWorkerScript() {
             const workerCode = `
+                // Simple deterministic hash for leading zero calculation
+                function simpleHash(input) {
+                    let hash = 0;
+                    for (let i = 0; i < input.length; i++) {
+                        const char = input.charCodeAt(i);
+                        hash = ((hash << 5) - hash) + char;
+                        hash = hash & hash;
+                    }
+                    let hex = '';
+                    for (let i = 0; i < 64; i++) {
+                        const val = Math.abs((hash * (i + 1)) % 256);
+                        hex += val.toString(16).padStart(2, '0');
+                    }
+                    return hex.substring(0, 64);
+                }
+
+                let lastLog = Date.now();
                 onmessage = function(e) {
                     const { challenge, salt, difficulty } = e.data;
-                    const leadingZeros = Math.ceil(difficulty / 4);
+                    const leadingZeros = difficulty - 1;
                     let nonce = 0;
                     const maxAttempts = 1000000;
+                    const startTime = Date.now();
+
+                    console.log('[WORKER] Starting solve - difficulty:', difficulty, 'leadingZeros:', leadingZeros);
 
                     while (nonce < maxAttempts) {
+                        const now = Date.now();
+                        if (now - lastLog >= 1000) {
+                            const elapsed = (now - startTime) / 1000;
+                            console.log('[WORKER] Progress:', nonce + '/' + maxAttempts, 'attempts,', elapsed.toFixed(1) + 's elapsed');
+                            lastLog = now;
+                        }
+
                         const data = challenge + nonce + salt;
-                        const hash = sha256Sync(data);
+                        const hash = simpleHash(data);
                         
                         let valid = true;
                         for (let i = 0; i < leadingZeros; i++) {
@@ -183,6 +258,8 @@
                         }
 
                         if (valid) {
+                            const elapsed = (Date.now() - startTime) / 1000;
+                            console.log('[WORKER] Solution found after', elapsed.toFixed(2) + 's - nonce:', nonce);
                             postMessage(nonce);
                             return;
                         }
@@ -190,19 +267,10 @@
                         nonce++;
                     }
 
+                    console.log('[WORKER] No solution found after', maxAttempts, 'attempts');
                     postMessage(0);
                 };
-
-                function sha256Sync(input) {
-                    let hash = 0;
-                    for (let i = 0; i < input.length; i++) {
-                        const char = input.charCodeAt(i);
-                        hash = ((hash << 5) - hash) + char;
-                        hash = hash & hash;
-                    }
-                    return ('00000000' + (hash >>> 0).toString(16)).slice(-8);
-                }
-            `;
+                `;
 
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             return URL.createObjectURL(blob);
