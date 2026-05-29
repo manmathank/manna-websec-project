@@ -29,9 +29,6 @@ spl_autoload_register(function ($class) {
 
 // Initialize plugin
 function altcha_protection_init() {
-    // Load settings
-    new AltchaProtection\Settings();
-    
     // Load client JS
     new AltchaProtection\ClientJS();
     
@@ -50,6 +47,11 @@ function altcha_protection_init() {
 }
 
 add_action('plugins_loaded', 'altcha_protection_init');
+
+// Initialize settings separately on admin_init
+add_action('admin_init', function() {
+    new AltchaProtection\Settings();
+});
 
 // Activation hook
 register_activation_hook(__FILE__, function () {

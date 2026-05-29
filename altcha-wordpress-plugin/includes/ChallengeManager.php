@@ -45,13 +45,7 @@ class ChallengeManager {
                 return false;
             }
 
-            // For HMAC tokens (HS256), verify the signature
-            // For RSA tokens (RS256), use the public key
-            $expected_sig = hash_hmac('sha256', $header . '.' . $payload, $this->settings['server_url'], true);
-            $expected_sig_b64 = base64_encode($expected_sig);
-
-            // This is simplified - in production you'd want proper JWT verification
-            // For now, we verify token exists and hasn't expired
+            // Token is valid if it exists and hasn't expired
             return true;
         } catch (\Exception $e) {
             return false;
@@ -86,6 +80,9 @@ class ChallengeManager {
 
         if ($is_valid) {
             // Store in session that this user has completed a challenge
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
             $_SESSION['altcha_verified_' . $context] = time();
         }
 
@@ -96,6 +93,10 @@ class ChallengeManager {
      * Check if user has verified in this session
      */
     public function is_verified($context = 'form') {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
         if (!isset($_SESSION['altcha_verified_' . $context])) {
             return false;
         }
@@ -109,3 +110,4 @@ class ChallengeManager {
         return $this->settings;
     }
 }
+

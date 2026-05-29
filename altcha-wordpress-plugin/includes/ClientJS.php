@@ -21,7 +21,7 @@ class ClientJS {
         );
 
         wp_localize_script('altcha-client', 'altchaConfig', [
-            'serverUrl' => $settings['server_url'],
+            'serverUrl' => $settings['server_url_client'],
             'difficulty' => $settings['difficulty'],
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('altcha_challenge'),
@@ -35,3 +35,4 @@ class ClientJS {
         );
     }
 }
+

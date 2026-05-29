@@ -43,21 +43,51 @@ class Settings {
                 
                 <table class="form-table">
                     <tr>
+                        <th scope="row" colspan="2">
+                            <h2 style="margin: 0;">Server Configuration</h2>
+                        </th>
+                    </tr>
+
+                    <tr>
                         <th scope="row">
-                            <label for="altcha_server_url">Altcha Server URL:</label>
+                            <label for="altcha_server_url_client">Altcha Server URL (Client-Side):</label>
                         </th>
                         <td>
                             <input 
                                 type="url" 
-                                id="altcha_server_url" 
-                                name="<?php echo esc_attr($this->option_name); ?>[server_url]" 
-                                value="<?php echo esc_attr($settings['server_url']); ?>" 
+                                id="altcha_server_url_client" 
+                                name="<?php echo esc_attr($this->option_name); ?>[server_url_client]" 
+                                value="<?php echo esc_attr($settings['server_url_client']); ?>" 
                                 required 
                                 style="width: 100%; max-width: 400px;"
                                 placeholder="http://localhost:8080"
                             />
-                            <p class="description">The URL of your Altcha server (e.g., http://localhost:8080)</p>
+                            <p class="description">The URL used by browsers to fetch challenges and verify solutions (e.g., http://localhost:8080 or https://altcha.yourdomain.com)</p>
                         </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row">
+                            <label for="altcha_server_url_server">Altcha Server URL (Server-Side):</label>
+                        </th>
+                        <td>
+                            <input 
+                                type="url" 
+                                id="altcha_server_url_server" 
+                                name="<?php echo esc_attr($this->option_name); ?>[server_url_server]" 
+                                value="<?php echo esc_attr($settings['server_url_server']); ?>" 
+                                required 
+                                style="width: 100%; max-width: 400px;"
+                                placeholder="http://localhost:8080"
+                            />
+                            <p class="description">The URL used by WordPress server for public key retrieval and token verification (e.g., http://localhost:8080 or http://altcha-internal:8080). Can be the same as client URL.</p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row" colspan="2">
+                            <h2 style="margin: 0;">Protection Settings</h2>
+                        </th>
                     </tr>
 
                     <tr>
@@ -130,26 +160,31 @@ class Settings {
                         </th>
                         <td>
                             <select id="altcha_difficulty" name="<?php echo esc_attr($this->option_name); ?>[difficulty]">
-                                <option value="1" <?php selected($settings['difficulty'], 1); ?>>Easy (1)</option>
-                                <option value="2" <?php selected($settings['difficulty'], 2); ?>>Medium (2)</option>
-                                <option value="3" <?php selected($settings['difficulty'], 3); ?>>Hard (3)</option>
-                                <option value="4" <?php selected($settings['difficulty'], 4); ?>>Very Hard (4)</option>
+                                <option value="1" <?php selected($settings['difficulty'], 1); ?>>Easy (1) - < 1ms</option>
+                                <option value="2" <?php selected($settings['difficulty'], 2); ?>>Medium (2) - ~10ms (Recommended)</option>
+                                <option value="3" <?php selected($settings['difficulty'], 3); ?>>Hard (3) - ~100ms</option>
+                                <option value="4" <?php selected($settings['difficulty'], 4); ?>>Very Hard (4) - ~1s</option>
                             </select>
-                            <p class="description">Higher difficulty = longer solving time but better protection</p>
+                            <p class="description">Higher difficulty = stronger protection but longer solving time</p>
                         </td>
                     </tr>
 
                     <tr>
-                        <th scope="row">Public Key:</th>
+                        <th scope="row" colspan="2">
+                            <h2 style="margin: 0;">Token Verification</h2>
+                        </th>
+                    </tr>
+
+                    <tr>
+                        <th scope="row">Public Key Status:</th>
                         <td>
-                            <textarea 
-                                id="altcha_public_key" 
-                                name="<?php echo esc_attr($this->option_name); ?>[public_key]" 
-                                rows="5" 
-                                style="width: 100%; max-width: 500px; font-family: monospace; font-size: 11px;"
-                                readonly
-                            ><?php echo esc_textarea($settings['public_key']); ?></textarea>
-                            <p class="description">The public key is automatically fetched from the Altcha server</p>
+                            <div id="altcha_key_status_container">
+                                <?php if (!empty($settings['public_key'])): ?>
+                                    <p style="color: green;">✓ Public key is configured</p>
+                                <?php else: ?>
+                                    <p style="color: orange;">⚠ No public key configured</p>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
 
@@ -173,11 +208,11 @@ class Settings {
 
         <script>
             document.getElementById('altcha_fetch_key_btn').addEventListener('click', function() {
-                const serverUrl = document.getElementById('altcha_server_url').value;
+                const serverUrl = document.getElementById('altcha_server_url_server').value;
                 const statusEl = document.getElementById('altcha_key_status');
                 
                 if (!serverUrl) {
-                    statusEl.innerHTML = '<span style="color: red;">Please enter the Altcha server URL first</span>';
+                    statusEl.innerHTML = '<span style="color: red;">Please enter the Altcha server URL (server-side) first</span>';
                     return;
                 }
 
@@ -192,16 +227,28 @@ class Settings {
                     method: 'POST',
                     body: data
                 })
-                .then(res => res.json())
-                .then(json => {
-                    if (json.success) {
-                        document.getElementById('altcha_public_key').value = json.data.public_key;
-                        statusEl.innerHTML = '<span style="color: green;">✓ Public key fetched successfully</span>';
-                    } else {
-                        statusEl.innerHTML = '<span style="color: red;">✗ ' + json.data.message + '</span>';
+                .then(res => {
+                    console.log('Response status:', res.status);
+                    return res.text();
+                })
+                .then(text => {
+                    console.log('Response text:', text);
+                    try {
+                        const json = JSON.parse(text);
+                        if (json.success) {
+                            document.getElementById('altcha_key_status_container').innerHTML = '<p style="color: green;">✓ Public key is configured</p>';
+                            statusEl.innerHTML = '<span style="color: green;">✓ Public key fetched successfully</span>';
+                        } else {
+                            const errorMsg = (json.data && json.data.message) ? json.data.message : 'Unknown error';
+                            statusEl.innerHTML = '<span style="color: red;">✗ ' + errorMsg + '</span>';
+                        }
+                    } catch (e) {
+                        console.error('JSON parse error:', e);
+                        statusEl.innerHTML = '<span style="color: red;">✗ Invalid response: ' + text.substring(0, 100) + '</span>';
                     }
                 })
                 .catch(err => {
+                    console.error('Fetch error:', err);
                     statusEl.innerHTML = '<span style="color: red;">✗ Error: ' + err.message + '</span>';
                 });
             });
@@ -210,28 +257,59 @@ class Settings {
     }
 
     public function ajax_fetch_public_key() {
-        check_ajax_referer('altcha_fetch_key');
+        // Add logging before nonce check
+        error_log('[Altcha] AJAX fetch_public_key called');
+
+        if (!check_ajax_referer('altcha_fetch_key', 'nonce', false)) {
+            error_log('[Altcha] Nonce verification failed');
+            wp_send_json_error(['message' => 'Nonce verification failed']);
+        }
+
+        if (!current_user_can('manage_options')) {
+            error_log('[Altcha] User does not have manage_options capability');
+            wp_send_json_error(['message' => 'Insufficient permissions']);
+        }
 
         $server_url = isset($_POST['server_url']) ? sanitize_url($_POST['server_url']) : '';
 
+        error_log('[Altcha] Public key fetch requested from: ' . $server_url);
+
         if (!$server_url) {
+            error_log('[Altcha] Error: No server URL provided');
             wp_send_json_error(['message' => 'No server URL provided']);
         }
 
-        $response = wp_remote_get($server_url . '/publickey', [
+        $fetch_url = $server_url . '/publickey';
+        error_log('[Altcha] Fetching public key from: ' . $fetch_url);
+
+        $response = wp_remote_get($fetch_url, [
             'timeout' => 5,
             'sslverify' => true,
         ]);
 
         if (is_wp_error($response)) {
-            wp_send_json_error(['message' => 'Failed to fetch public key: ' . $response->get_error_message()]);
+            $error_msg = 'Failed to fetch public key: ' . $response->get_error_message();
+            error_log('[Altcha] Error: ' . $error_msg);
+            wp_send_json_error(['message' => $error_msg]);
         }
 
+        $http_code = wp_remote_retrieve_response_code($response);
+        error_log('[Altcha] Response HTTP code: ' . $http_code);
+
         $body = wp_remote_retrieve_body($response);
+        error_log('[Altcha] Response body: ' . substr($body, 0, 200));
+
         $data = json_decode($body, true);
 
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $json_error = json_last_error_msg();
+            error_log('[Altcha] JSON decode error: ' . $json_error);
+            wp_send_json_error(['message' => 'Invalid JSON response from Altcha server: ' . $json_error]);
+        }
+
         if (!isset($data['publicKey'])) {
-            wp_send_json_error(['message' => 'Invalid response from Altcha server']);
+            error_log('[Altcha] Error: publicKey not found in response. Response: ' . print_r($data, true));
+            wp_send_json_error(['message' => 'Invalid response from Altcha server: publicKey not found']);
         }
 
         // Store the public key
@@ -239,14 +317,18 @@ class Settings {
         $settings['public_key'] = $data['publicKey'];
         update_option($this->option_name, $settings);
 
+        error_log('[Altcha] Public key successfully stored');
         wp_send_json_success(['public_key' => $data['publicKey']]);
     }
 
     public function sanitize_settings($settings) {
         $sanitized = $this->get_settings();
         
-        if (isset($settings['server_url'])) {
-            $sanitized['server_url'] = sanitize_url($settings['server_url']);
+        if (isset($settings['server_url_client'])) {
+            $sanitized['server_url_client'] = sanitize_url($settings['server_url_client']);
+        }
+        if (isset($settings['server_url_server'])) {
+            $sanitized['server_url_server'] = sanitize_url($settings['server_url_server']);
         }
         if (isset($settings['enable_login'])) {
             $sanitized['enable_login'] = (int)$settings['enable_login'];
@@ -269,7 +351,8 @@ class Settings {
 
     public function get_settings() {
         $defaults = [
-            'server_url' => 'http://localhost:8080',
+            'server_url_client' => 'http://localhost:8080',
+            'server_url_server' => 'http://localhost:8080',
             'enable_login' => 1,
             'enable_registration' => 1,
             'enable_wpforms' => 1,
@@ -278,6 +361,7 @@ class Settings {
             'public_key' => '',
         ];
         
-        return array_merge($defaults, (array)get_option('altcha_protection', []));
+        return array_merge($defaults, (array)get_option($this->option_name, []));
     }
 }
+

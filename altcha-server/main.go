@@ -152,6 +152,8 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 	challenge := generateRandomHex(32)
 	salt := generateRandomHex(16)
 
+	log.Printf("[CHALLENGE] Generated - difficulty: %d, challenge: %s, salt: %s\n", difficulty, challenge[:8]+"...", salt[:8]+"...")
+
 	response := ChallengeResponse{
 		Algorithm:   "SHA-256",
 		Challenge:   challenge,
@@ -181,6 +183,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	var req VerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("[VERIFY] Decode error: %v\n", err)
 		json.NewEncoder(w).Encode(VerifyResponse{
 			IsValid:      false,
 			ErrorMessage: "Invalid request",
@@ -188,8 +191,11 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[VERIFY] Request received - challenge: %s, salt: %s, number: %d\n", req.Challenge[:8]+"...", req.Salt[:8]+"...", req.Number)
+
 	// Verify PoW
 	if !s.verifyPoW(req.Challenge, req.Salt, req.Number) {
+		log.Printf("[VERIFY] PoW verification failed\n")
 		json.NewEncoder(w).Encode(VerifyResponse{
 			IsValid:      false,
 			ErrorMessage: "PoW verification failed",
@@ -197,15 +203,20 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[VERIFY] PoW verification successful\n")
+
 	// Generate token
 	token, err := s.generateToken(req.Challenge, req.Salt)
 	if err != nil {
+		log.Printf("[VERIFY] Token generation error: %v\n", err)
 		json.NewEncoder(w).Encode(VerifyResponse{
 			IsValid:      false,
 			ErrorMessage: "Failed to generate token",
 		})
 		return
 	}
+
+	log.Printf("[VERIFY] Token generated successfully: %s\n", token[:50]+"...")
 
 	json.NewEncoder(w).Encode(VerifyResponse{
 		IsValid: true,
@@ -228,10 +239,14 @@ func (s *Server) handlePublicKey(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	log.Printf("[PUBLICKEY] Request received from: %s\n", r.RemoteAddr)
+
 	response := PublicKeyResponse{
 		PublicKey: string(s.publicKeyPEM),
 		Algorithm: "RSA-SHA256",
 	}
+
+	log.Printf("[PUBLICKEY] Sending public key (%d bytes)\n", len(s.publicKeyPEM))
 
 	json.NewEncoder(w).Encode(response)
 }
