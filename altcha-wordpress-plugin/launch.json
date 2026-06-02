@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+  {
+    "name": "Listen for Xdebug",
+    "type": "php",
+    "request": "launch",
+    "port": 9003,
+    "pathMappings": {
+      "/var/www/html/wp-content/plugins/altcha-protection": "${workspaceFolder}/altcha-protection"
+    }
+  },
+  {
+    "name": "Debug JS Client",
+    "type": "chrome",
+    "request": "launch",
+    #"url": "http://localhost:8000",
+    "url": "http://viborgsolceller.dk/",
+    "webRoot": "${workspaceFolder}/manna-websec-project/altcha-wordpress-plugin"
+  },
+  {
+    "name": "Attach to altcha-server (Go)",
+    "type": "go",
+    "request": "attach",
+    "mode": "remote",
+    "remotePath": "/app",
+    "port": 40000,
+    "host": "localhost"
+  }
+  ],
+  "compounds": [
+    {
+      "name": "Server/Client",
+      "configurations": ["Listen for Xdebug", "Debug JS Client", "Attach to altcha-server"],
+      "preLaunchTask": "${defaultBuildTask}",
+      "stopAll": true
+    }
+  ]
+}
+

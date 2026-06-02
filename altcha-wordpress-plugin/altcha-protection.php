@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altcha Protection
  * Description: PoW-based bot protection for login, registration, forms, and WooCommerce checkout
- * Version: 1.0.2
+ * Version: 1.0.11
  * Author: Your Name
  * License: MIT
  * Text Domain: altcha-protection
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('ALTCHA_PROTECTION_VERSION', '1.0.2');
+define('ALTCHA_PROTECTION_VERSION', '1.0.11');
 define('ALTCHA_PROTECTION_DIR', plugin_dir_path(__FILE__));
 define('ALTCHA_PROTECTION_URL', plugin_dir_url(__FILE__));
 
